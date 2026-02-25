@@ -28,20 +28,46 @@ st.set_page_config(page_title="GEX QUANT PRO", layout="wide")
 st.title("🛡️ GEX QUANT: Terminale di Analisi")
 
 # 1. MODALITÀ CSV (A SCOMPARSA)
-with st.expander("📂 MODALITÀ CSV: Carica il tuo file istituzionale"):
-    uploaded_file = st.file_uploader("Trascina qui il file .csv", type="csv")
+with st.expander("📂 IMPORTA DATI CSV (Istituzionale)", expanded=False):
+    uploaded_file = st.file_uploader("Carica il file .csv", type="csv")
     if uploaded_file:
         df_csv = pd.read_csv(uploaded_file)
-        # Pulizia veloce
-        df_csv['Type'] = df_csv['Type'].str.capitalize()
-        spot_csv = df_csv.iloc[(df_csv['Moneyness'].abs()).idxmin()]['Strike']
         
-        # Calcolo GEX basato su Gamma fornita nel CSV
-        df_csv['GEX'] = df_csv.apply(lambda r: r['Gamma'] * r['Open Int'] * 100 * spot_csv if r['Type'] == 'Call' 
-                                     else -r['Gamma'] * r['Open Int'] * 100 * spot_csv, axis=1)
+        # FUNZIONE DI PULIZIA AUTOMATICA
+        def clean_numeric(column):
+            return pd.to_numeric(
+                df_csv[column].astype(str)
+                .str.replace('%', '', regex=False)
+                .str.replace('unch', '0', regex=False)
+                .str.replace(',', '', regex=False), # Rimuove eventuali virgole americane
+                errors='coerce'
+            ).fillna(0)
+
+        # Puliamo le colonne critiche prima di usarle
+        df_csv['Moneyness'] = clean_numeric('Moneyness')
+        df_csv['Gamma'] = clean_numeric('Gamma')
+        df_csv['Open Int'] = clean_numeric('Open Int')
         
-        st.success(f"Dati CSV caricati. Spot rilevato: {spot_csv}")
-        plot_gex(df_csv, spot_csv, "Gamma Exposure dal tuo CSV")
+        # Ora il calcolo dello SPOT non fallirà più
+        try:
+            # Troviamo lo strike dove la Moneyness è più vicina a zero
+            idx_spot = df_csv['Moneyness'].abs().idxmin()
+            spot_csv = df_csv.loc[idx_spot, 'Strike']
+            
+            st.success(f"Dati caricati correttamente. Spot Price stimato: ${spot_csv}")
+
+            # Calcolo GEX
+            df_csv['Type'] = df_csv['Type'].str.capitalize()
+            df_csv['GEX'] = df_csv.apply(
+                lambda r: r['Gamma'] * r['Open Int'] * 100 * spot_csv if r['Type'] == 'Call' 
+                else -r['Gamma'] * r['Open Int'] * 100 * spot_csv, axis=1
+            )
+            
+            # Grafico
+            plot_gex(df_csv, spot_csv, "Gamma Exposure dal tuo CSV")
+            
+        except Exception as e:
+            st.error(f"Errore nel calcolo dei dati: {e}")
 
 # 2. MODALITÀ LIVE YAHOO (A SCOMPARSA)
 with st.expander("🌐 MODALITÀ LIVE: Yahoo Finance (SPY, QQQ, AAPL)"):
