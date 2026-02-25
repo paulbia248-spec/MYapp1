@@ -70,6 +70,9 @@ with st.expander("📂 MODALITÀ CSV: Carica il tuo file", expanded=True):
             st.error(f"Errore durante l'elaborazione: {e}")
 
 # Sezione Live
+import streamlit as st
+from data_provider import YahooFinanceProvider  # Importiamo il tuo nuovo file
+# ... (mantieni le tue funzioni di calcolo Gamma e Flip qui sopra)
 with st.expander("🌐 MODALITÀ LIVE: Yahoo Finance"):
     ticker = st.selectbox("Ticker", ["SPY", "QQQ", "IWM"])
     if st.button("Analizza Live"):
