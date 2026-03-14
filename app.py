@@ -5,6 +5,9 @@ import numpy as np
 import yfinance as yf
 from scipy.stats import norm
 
+from parity_tab import render_parity_tab
+
+
 # --- Funzioni di Supporto ---
 def clean_val(val):
     """Pulisce stringhe sporche (%, unch, virgole) e le converte in float."""
@@ -37,54 +40,62 @@ def plot_gex(df, spot, title):
     fig.add_vline(x=spot, line_dash="dash", line_color="yellow", annotation_text=f"SPOT: {spot:.2f}")
     st.plotly_chart(fig, use_container_width=True)
 
+
 # --- UI ---
 st.set_page_config(page_title="GEX QUANT PRO", layout="wide")
 st.title("🛡️ GEX QUANT: Terminale di Analisi")
 
-# Sezione CSV
-with st.expander("📂 MODALITÀ CSV: Carica il tuo file", expanded=True):
+tab_csv, tab_live, tab_iv = st.tabs(["📂 GEX – CSV", "🌐 GEX – Live", "📊 IV Term"])
+
+# ── Tab 1: CSV ────────────────────────────────────────────────────────────────
+with tab_csv:
+    st.subheader("📂 Modalità CSV: carica il tuo file")
     uploaded_file = st.file_uploader("Seleziona il file .csv", type="csv")
     if uploaded_file:
         df = pd.read_csv(uploaded_file)
-        
-        # Conversione forzata di tutte le colonne necessarie
+
         df['Moneyness'] = df['Moneyness'].apply(clean_val)
         df['Gamma'] = df['Gamma'].apply(clean_val)
         df['Open Int'] = df['Open Int'].apply(clean_val)
         df['Strike'] = df['Strike'].apply(clean_val)
-        
-        # Identificazione SPOT
+
         try:
             idx_spot = df['Moneyness'].abs().idxmin()
             spot_val = float(df.loc[idx_spot, 'Strike'])
-            
-            # Calcolo GEX - Qui usiamo float() per sicurezza assoluta
-            df['GEX'] = df.apply(lambda r: 
-                float(r['Gamma']) * float(r['Open Int']) * 100.0 * spot_val if str(r['Type']).capitalize() == 'Call' 
+
+            df['GEX'] = df.apply(lambda r:
+                float(r['Gamma']) * float(r['Open Int']) * 100.0 * spot_val if str(r['Type']).capitalize() == 'Call'
                 else -float(r['Gamma']) * float(r['Open Int']) * 100.0 * spot_val, axis=1)
-            
+
             st.metric("Spot Price Rilevato", f"${spot_val:,.2f}")
             plot_gex(df, spot_val, "Profilo Gamma Exposure (Istituzionale)")
-            
+
         except Exception as e:
             st.error(f"Errore durante l'elaborazione: {e}")
 
-# Sezione Live
-import streamlit as st
-from data_provider import YahooFinanceProvider  # Importiamo il tuo nuovo file
-# ... (mantieni le tue funzioni di calcolo Gamma e Flip qui sopra)
-with st.expander("🌐 MODALITÀ LIVE: Yahoo Finance"):
-    ticker = st.selectbox("Ticker", ["SPY", "QQQ", "IWM"])
-    if st.button("Analizza Live"):
+# ── Tab 2: Live Yahoo Finance ─────────────────────────────────────────────────
+with tab_live:
+    st.subheader("🌐 Modalità Live: Yahoo Finance")
+    ticker = st.selectbox("Ticker", ["SPY", "QQQ", "IWM"], key="gex_live_ticker")
+    if st.button("Analizza Live", key="gex_live_btn"):
         tk = yf.Ticker(ticker)
         spot_live = tk.history(period="1d")['Close'].iloc[-1]
         opts = tk.option_chain(tk.options[0])
         live_df = pd.concat([opts.calls.assign(Type='Call'), opts.puts.assign(Type='Put')])
-        live_df = live_df.rename(columns={'strike': 'Strike', 'openInterest': 'Open Int', 'impliedVolatility': 'IV'})
-        
-        live_df['GEX'] = live_df.apply(lambda r: 
-            bsm_gamma(spot_live, r['Strike'], 0.02, 0.04, r['IV']) * r['Open Int'] * 100 * spot_live 
-            if r['Type'] == 'Call' else 
-            -bsm_gamma(spot_live, r['Strike'], 0.02, 0.04, r['IV']) * r['Open Int'] * 100 * spot_live, axis=1)
-        
+        live_df = live_df.rename(columns={
+            'strike': 'Strike',
+            'openInterest': 'Open Int',
+            'impliedVolatility': 'IV',
+        })
+
+        live_df['GEX'] = live_df.apply(lambda r:
+            bsm_gamma(spot_live, r['Strike'], 0.02, 0.04, r['IV']) * r['Open Int'] * 100 * spot_live
+            if r['Type'] == 'Call' else
+            -bsm_gamma(spot_live, r['Strike'], 0.02, 0.04, r['IV']) * r['Open Int'] * 100 * spot_live,
+            axis=1)
+
         plot_gex(live_df, spot_live, f"GEX Live: {ticker}")
+
+# ── Tab 3: IV Term ────────────────────────────────────────────────────────────
+with tab_iv:
+    render_parity_tab()
