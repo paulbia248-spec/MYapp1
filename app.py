@@ -20,7 +20,7 @@ def clean_val(val):
 
 def bsm_gamma(S, K, T, r, sigma):
     if T <= 0 or sigma <= 0 or S <= 0: return 0
-    d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (S * sigma * np.sqrt(T))
+    d1 = (np.log(S / K) + (r + 0.5 * sigma**2) * T) / (sigma * np.sqrt(T))
     return norm.pdf(d1) / (S * sigma * np.sqrt(T))
 
 def plot_gex(df, spot, title):
